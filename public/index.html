@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sistema Lista de Tarefas</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Lista de Tarefas</h1>
+      <button id="btnNovaTarefa" class="btn btn-primary">+ Nova Tarefa</button>
+    </header>
+
+    <main>
+      <table id="tabelaTarefas">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Nome da Tarefa</th>
+            <th>Custo (R$)</th>
+            <th>Data Limite</th>
+            <th>Ações</th>
+            <th>Ordem</th>
+          </tr>
+        </thead>
+        <tbody id="corpoTabela">
+          <!-- Tarefas serão inseridas aqui via JavaScript -->
+        </tbody>
+        <tfoot>
+          <tr>
+            <td colspan="2"><strong>Total:</strong></td>
+            <td id="totalCusto"><strong>R$ 0,00</strong></td>
+            <td colspan="3"></td>
+          </tr>
+        </tfoot>
+      </table>
+
+      <div id="mensagemVazia" class="mensagem-vazia" style="display: none;">
+        <p>Nenhuma tarefa cadastrada. Clique em "+ Nova Tarefa" para começar.</p>
+      </div>
+    </main>
+  </div>
+
+  <!-- Modal para Incluir/Editar Tarefa -->
+  <div id="modalTarefa" class="modal" style="display: none;">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 id="modalTitulo">Nova Tarefa</h2>
+        <button class="btn-fechar" onclick="fecharModal()">&times;</button>
+      </div>
+      <form id="formTarefa">
+        <input type="hidden" id="tarefaId">
+        
+        <div class="form-group">
+          <label for="nome">Nome da Tarefa: *</label>
+          <input type="text" id="nome" name="nome" required maxlength="255">
+        </div>
+        
+        <div class="form-group">
+          <label for="custo">Custo (R$): *</label>
+          <input type="text" id="custo" name="custo" required placeholder="0,00">
+        </div>
+        
+        <div class="form-group">
+          <label for="dataLimite">Data Limite: *</label>
+          <input type="text" id="dataLimite" name="dataLimite" required placeholder="DD/MM/AAAA" maxlength="10">
+        </div>
+        
+        <div class="form-actions">
+          <button type="button" class="btn btn-secondary" onclick="fecharModal()">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Salvar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal de Confirmação de Exclusão -->
+  <div id="modalConfirmacao" class="modal" style="display: none;">
+    <div class="modal-content modal-confirmacao">
+      <div class="modal-header">
+        <h2>Confirmar Exclusão</h2>
+      </div>
+      <div class="modal-body">
+        <p>Deseja realmente excluir a tarefa "<span id="nomeExclusao"></span>"?</p>
+      </div>
+      <div class="form-actions">
+        <button type="button" class="btn btn-secondary" onclick="fecharModalConfirmacao()">Não</button>
+        <button type="button" class="btn btn-danger" id="btnConfirmarExclusao">Sim</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
