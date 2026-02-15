@@ -31,6 +31,16 @@ const hasResults = (result) => {
   return result && result.length > 0 && result[0].values && result[0].values.length > 0;
 };
 
+// Helper para validar data no formato ISO (YYYY-MM-DD)
+const validarDataISO = (dataStr) => {
+  if (!dataStr || typeof dataStr !== 'string') return false;
+  const regex = /^\d{4}-\d{2}-\d{2}$/;
+  if (!regex.test(dataStr)) return false;
+  const [ano, mes, dia] = dataStr.split('-').map(Number);
+  const data = new Date(ano, mes - 1, dia);
+  return data.getFullYear() === ano && data.getMonth() === mes - 1 && data.getDate() === dia;
+};
+
 // ROTAS DA API
 
 // Listar todas as tarefas
@@ -73,11 +83,15 @@ app.post('/api/tarefas', (req, res) => {
     if (!nome || nome.trim() === '') {
       return res.status(400).json({ error: 'Nome da tarefa é obrigatório' });
     }
-    if (custo === undefined || custo === null || custo < 0) {
+    if (custo === undefined || custo === null || isNaN(parseFloat(custo)) || parseFloat(custo) < 0) {
       return res.status(400).json({ error: 'Custo deve ser maior ou igual a zero' });
     }
     if (!data_limite) {
       return res.status(400).json({ error: 'Data limite é obrigatória' });
+    }
+    // Validar formato de data (YYYY-MM-DD)
+    if (!validarDataISO(data_limite)) {
+      return res.status(400).json({ error: 'Data limite inválida' });
     }
 
     const nomeLimpo = nome.trim().replace(/'/g, "''");
@@ -118,11 +132,15 @@ app.put('/api/tarefas/:id', (req, res) => {
     if (!nome || nome.trim() === '') {
       return res.status(400).json({ error: 'Nome da tarefa é obrigatório' });
     }
-    if (custo === undefined || custo === null || custo < 0) {
+    if (custo === undefined || custo === null || isNaN(parseFloat(custo)) || parseFloat(custo) < 0) {
       return res.status(400).json({ error: 'Custo deve ser maior ou igual a zero' });
     }
     if (!data_limite) {
       return res.status(400).json({ error: 'Data limite é obrigatória' });
+    }
+    // Validar formato de data (YYYY-MM-DD)
+    if (!validarDataISO(data_limite)) {
+      return res.status(400).json({ error: 'Data limite inválida' });
     }
 
     const idNum = parseInt(id);

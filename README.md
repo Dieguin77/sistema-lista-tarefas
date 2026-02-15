@@ -2,27 +2,33 @@
 
 Sistema web para cadastro e gerenciamento de tarefas.
 
+## 🌐 Acesso Online
+
+**Aplicação em produção:** https://sistema-tarefas-app.fly.dev/
+
 ## Funcionalidades
 
 - **Listagem de Tarefas**: Exibe todas as tarefas ordenadas por ordem de apresentação
 - **Inclusão**: Adiciona novas tarefas com nome, custo e data limite
-- **Edição**: Permite alterar nome, custo e data limite de tarefas existentes
-- **Exclusão**: Remove tarefas com confirmação
-- **Reordenação**: Arraste e solte (drag-and-drop) ou use os botões ▲▼
+- **Edição**: Permite alterar nome, custo e data limite de tarefas existentes (via popup)
+- **Exclusão**: Remove tarefas com confirmação (Sim/Não)
+- **Reordenação**: Botões ▲▼ para subir/descer + arraste e solte (drag-and-drop)
 - **Destaque**: Tarefas com custo >= R$ 1.000,00 são destacadas em amarelo
 - **Somatório**: Exibe o total dos custos no rodapé
+- **Validações**: Nome único, custo >= 0, data válida, campos obrigatórios
 
 ## Tecnologias
 
 - **Backend**: Node.js + Express
-- **Banco de Dados**: PostgreSQL
+- **Banco de Dados**: SQLite (sql.js)
 - **Frontend**: HTML, CSS e JavaScript puro
+- **Hospedagem**: Fly.io
 
 ## Instalação Local
 
 1. Clone o repositório:
 ```bash
-git clone https://github.com/SEU_USUARIO/sistema-lista-tarefas.git
+git clone https://github.com/Dieguin77/sistema-lista-tarefas.git
 cd sistema-lista-tarefas
 ```
 
@@ -31,18 +37,20 @@ cd sistema-lista-tarefas
 npm install
 ```
 
-3. Configure as variáveis de ambiente:
-```bash
-cp .env.example .env
-# Edite o arquivo .env com suas configurações de banco de dados
-```
-
-4. Execute o servidor:
+3. Execute o servidor:
 ```bash
 npm start
 ```
 
-5. Acesse: http://localhost:3000
+4. Acesse: http://localhost:3000
+
+## Variáveis de Ambiente
+
+O sistema usa SQLite e não requer configuração de banco de dados externo. Opcionalmente, você pode configurar:
+
+| Variável | Descrição | Padrão |
+|----------|-----------|--------|
+| PORT | Porta do servidor | 3000 |
 
 ## Estrutura do Banco de Dados
 
@@ -50,11 +58,17 @@ npm start
 
 | Campo | Tipo | Descrição |
 |-------|------|-----------|
-| id | SERIAL | Identificador (chave primária) |
-| nome | VARCHAR(255) | Nome da tarefa (único) |
-| custo | DECIMAL(15,2) | Custo em R$ (>= 0) |
-| data_limite | DATE | Data limite |
+| id | INTEGER | Identificador (chave primária, auto-incremento) |
+| nome | TEXT | Nome da tarefa (único, case-insensitive) |
+| custo | REAL | Custo em R$ (>= 0) |
+| data_limite | TEXT | Data limite (formato YYYY-MM-DD) |
 | ordem_apresentacao | INTEGER | Ordem de exibição (único) |
+
+### Constraints
+
+- `nome` UNIQUE - Não permite nomes duplicados
+- `custo` CHECK (custo >= 0) - Custo não pode ser negativo
+- `ordem_apresentacao` UNIQUE - Ordem não pode se repetir
 
 ## API Endpoints
 
