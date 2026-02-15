@@ -1,0 +1,23 @@
+# fly.toml - Configuração Fly.io
+
+app = 'sistema-tarefas-app'
+primary_region = 'gru'
+
+[build]
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ['app']
+
+[mounts]
+  source = "data"
+  destination = "/app/.data"
+
+[[vm]]
+  memory = '256mb'
+  cpu_kind = 'shared'
+  cpus = 1
