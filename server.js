@@ -77,8 +77,8 @@ app.post('/api/tarefas', (req, res) => {
     const nomeLimpo = nome.trim().replace(/'/g, "''");
 
     // Verificar se nome já existe
-    const existente = db.exec(`SELECT id FROM tarefas WHERE nome = '${nomeLimpo}' COLLATE NOCASE`);
-    if (existente.length > 0 && existente[0].values.length > 0) {
+    const existente = db.exec(`SELECT id FROM tarefas WHERE LOWER(nome) = LOWER('${nomeLimpo}')`);
+    if (existente && existente.length > 0 && existente[0].values && existente[0].values.length > 0) {
       return res.status(400).json({ error: 'Já existe uma tarefa com este nome' });
     }
 
@@ -129,8 +129,8 @@ app.put('/api/tarefas/:id', (req, res) => {
     }
 
     // Verificar nome duplicado
-    const duplicado = db.exec(`SELECT id FROM tarefas WHERE nome = '${nomeLimpo}' COLLATE NOCASE AND id != ${idNum}`);
-    if (duplicado.length > 0 && duplicado[0].values.length > 0) {
+    const duplicado = db.exec(`SELECT id FROM tarefas WHERE LOWER(nome) = LOWER('${nomeLimpo}') AND id != ${idNum}`);
+    if (duplicado && duplicado.length > 0 && duplicado[0].values && duplicado[0].values.length > 0) {
       return res.status(400).json({ error: 'Já existe outra tarefa com este nome' });
     }
 
