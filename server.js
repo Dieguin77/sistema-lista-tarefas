@@ -3,7 +3,7 @@ const cors = require('cors');
 const path = require('path');
 require('dotenv').config();
 
-const { pool, initDatabase } = require('./database');
+const { initDatabase, getDb, saveDatabase } = require('./database');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -13,18 +13,27 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Inicializar banco de dados
-initDatabase();
+// Helper para converter resultado sql.js para array de objetos
+const queryToObjects = (result) => {
+  if (!result || result.length === 0) return [];
+  const columns = result[0].columns;
+  const values = result[0].values;
+  return values.map(row => {
+    const obj = {};
+    columns.forEach((col, i) => obj[col] = row[i]);
+    return obj;
+  });
+};
 
 // ROTAS DA API
 
-// Listar todas as tarefas (ordenadas por ordem_apresentacao)
-app.get('/api/tarefas', async (req, res) => {
+// Listar todas as tarefas
+app.get('/api/tarefas', (req, res) => {
   try {
-    const result = await pool.query(
-      'SELECT * FROM tarefas ORDER BY ordem_apresentacao ASC'
-    );
-    res.json(result.rows);
+    const db = getDb();
+    const result = db.exec('SELECT * FROM tarefas ORDER BY ordem_apresentacao ASC');
+    const tarefas = queryToObjects(result);
+    res.json(tarefas);
   } catch (err) {
     console.error('Erro ao listar tarefas:', err);
     res.status(500).json({ error: 'Erro ao listar tarefas' });
@@ -32,14 +41,16 @@ app.get('/api/tarefas', async (req, res) => {
 });
 
 // Obter uma tarefa específica
-app.get('/api/tarefas/:id', async (req, res) => {
+app.get('/api/tarefas/:id', (req, res) => {
   try {
+    const db = getDb();
     const { id } = req.params;
-    const result = await pool.query('SELECT * FROM tarefas WHERE id = $1', [id]);
-    if (result.rows.length === 0) {
+    const result = db.exec(`SELECT * FROM tarefas WHERE id = ${parseInt(id)}`);
+    const tarefas = queryToObjects(result);
+    if (tarefas.length === 0) {
       return res.status(404).json({ error: 'Tarefa não encontrada' });
     }
-    res.json(result.rows[0]);
+    res.json(tarefas[0]);
   } catch (err) {
     console.error('Erro ao buscar tarefa:', err);
     res.status(500).json({ error: 'Erro ao buscar tarefa' });
@@ -47,9 +58,9 @@ app.get('/api/tarefas/:id', async (req, res) => {
 });
 
 // Incluir nova tarefa
-app.post('/api/tarefas', async (req, res) => {
-  const client = await pool.connect();
+app.post('/api/tarefas', (req, res) => {
   try {
+    const db = getDb();
     const { nome, custo, data_limite } = req.body;
 
     // Validações
@@ -63,42 +74,37 @@ app.post('/api/tarefas', async (req, res) => {
       return res.status(400).json({ error: 'Data limite é obrigatória' });
     }
 
+    const nomeLimpo = nome.trim().replace(/'/g, "''");
+
     // Verificar se nome já existe
-    const existente = await client.query(
-      'SELECT id FROM tarefas WHERE LOWER(nome) = LOWER($1)',
-      [nome.trim()]
-    );
-    if (existente.rows.length > 0) {
+    const existente = db.exec(`SELECT id FROM tarefas WHERE nome = '${nomeLimpo}' COLLATE NOCASE`);
+    if (existente.length > 0 && existente[0].values.length > 0) {
       return res.status(400).json({ error: 'Já existe uma tarefa com este nome' });
     }
 
-    // Obter próxima ordem de apresentação
-    const maxOrdem = await client.query(
-      'SELECT COALESCE(MAX(ordem_apresentacao), 0) + 1 AS proxima_ordem FROM tarefas'
-    );
-    const ordem_apresentacao = maxOrdem.rows[0].proxima_ordem;
+    // Obter próxima ordem
+    const maxResult = db.exec('SELECT COALESCE(MAX(ordem_apresentacao), 0) + 1 AS proxima FROM tarefas');
+    const proximaOrdem = maxResult.length > 0 ? maxResult[0].values[0][0] : 1;
 
-    // Inserir tarefa
-    const result = await client.query(
-      `INSERT INTO tarefas (nome, custo, data_limite, ordem_apresentacao)
-       VALUES ($1, $2, $3, $4)
-       RETURNING *`,
-      [nome.trim(), custo, data_limite, ordem_apresentacao]
-    );
+    // Inserir
+    db.run(`INSERT INTO tarefas (nome, custo, data_limite, ordem_apresentacao) VALUES ('${nomeLimpo}', ${custo}, '${data_limite}', ${proximaOrdem})`);
+    saveDatabase();
 
-    res.status(201).json(result.rows[0]);
+    // Buscar tarefa inserida
+    const novaResult = db.exec('SELECT * FROM tarefas WHERE id = last_insert_rowid()');
+    const novaTarefa = queryToObjects(novaResult)[0];
+
+    res.status(201).json(novaTarefa);
   } catch (err) {
     console.error('Erro ao criar tarefa:', err);
     res.status(500).json({ error: 'Erro ao criar tarefa' });
-  } finally {
-    client.release();
   }
 });
 
-// Editar tarefa (apenas nome, custo e data_limite)
-app.put('/api/tarefas/:id', async (req, res) => {
-  const client = await pool.connect();
+// Editar tarefa
+app.put('/api/tarefas/:id', (req, res) => {
   try {
+    const db = getDb();
     const { id } = req.params;
     const { nome, custo, data_limite } = req.body;
 
@@ -113,186 +119,140 @@ app.put('/api/tarefas/:id', async (req, res) => {
       return res.status(400).json({ error: 'Data limite é obrigatória' });
     }
 
-    // Verificar se tarefa existe
-    const tarefaExistente = await client.query(
-      'SELECT * FROM tarefas WHERE id = $1',
-      [id]
-    );
-    if (tarefaExistente.rows.length === 0) {
+    const idNum = parseInt(id);
+    const nomeLimpo = nome.trim().replace(/'/g, "''");
+
+    // Verificar se existe
+    const existeResult = db.exec(`SELECT * FROM tarefas WHERE id = ${idNum}`);
+    if (existeResult.length === 0 || existeResult[0].values.length === 0) {
       return res.status(404).json({ error: 'Tarefa não encontrada' });
     }
 
-    // Verificar se novo nome já existe em outra tarefa
-    const nomeExistente = await client.query(
-      'SELECT id FROM tarefas WHERE LOWER(nome) = LOWER($1) AND id != $2',
-      [nome.trim(), id]
-    );
-    if (nomeExistente.rows.length > 0) {
+    // Verificar nome duplicado
+    const duplicado = db.exec(`SELECT id FROM tarefas WHERE nome = '${nomeLimpo}' COLLATE NOCASE AND id != ${idNum}`);
+    if (duplicado.length > 0 && duplicado[0].values.length > 0) {
       return res.status(400).json({ error: 'Já existe outra tarefa com este nome' });
     }
 
-    // Atualizar tarefa
-    const result = await client.query(
-      `UPDATE tarefas 
-       SET nome = $1, custo = $2, data_limite = $3
-       WHERE id = $4
-       RETURNING *`,
-      [nome.trim(), custo, data_limite, id]
-    );
+    // Atualizar
+    db.run(`UPDATE tarefas SET nome = '${nomeLimpo}', custo = ${custo}, data_limite = '${data_limite}' WHERE id = ${idNum}`);
+    saveDatabase();
 
-    res.json(result.rows[0]);
+    const atualizada = db.exec(`SELECT * FROM tarefas WHERE id = ${idNum}`);
+    res.json(queryToObjects(atualizada)[0]);
   } catch (err) {
     console.error('Erro ao atualizar tarefa:', err);
     res.status(500).json({ error: 'Erro ao atualizar tarefa' });
-  } finally {
-    client.release();
   }
 });
 
 // Excluir tarefa
-app.delete('/api/tarefas/:id', async (req, res) => {
-  const client = await pool.connect();
+app.delete('/api/tarefas/:id', (req, res) => {
   try {
+    const db = getDb();
     const { id } = req.params;
+    const idNum = parseInt(id);
 
-    const result = await client.query(
-      'DELETE FROM tarefas WHERE id = $1 RETURNING *',
-      [id]
-    );
-
-    if (result.rows.length === 0) {
+    const existeResult = db.exec(`SELECT * FROM tarefas WHERE id = ${idNum}`);
+    if (existeResult.length === 0 || existeResult[0].values.length === 0) {
       return res.status(404).json({ error: 'Tarefa não encontrada' });
     }
 
-    res.json({ message: 'Tarefa excluída com sucesso', tarefa: result.rows[0] });
+    const tarefa = queryToObjects(existeResult)[0];
+    db.run(`DELETE FROM tarefas WHERE id = ${idNum}`);
+    saveDatabase();
+
+    res.json({ message: 'Tarefa excluída com sucesso', tarefa });
   } catch (err) {
     console.error('Erro ao excluir tarefa:', err);
     res.status(500).json({ error: 'Erro ao excluir tarefa' });
-  } finally {
-    client.release();
   }
 });
 
-// Reordenar tarefas (mover para cima ou para baixo)
-app.put('/api/tarefas/:id/reordenar', async (req, res) => {
-  const client = await pool.connect();
+// Reordenar (subir/descer)
+app.put('/api/tarefas/:id/reordenar', (req, res) => {
   try {
+    const db = getDb();
     const { id } = req.params;
-    const { direcao } = req.body; // 'subir' ou 'descer'
+    const { direcao } = req.body;
+    const idNum = parseInt(id);
 
-    await client.query('BEGIN');
-
-    // Buscar tarefa atual
-    const tarefaAtual = await client.query(
-      'SELECT * FROM tarefas WHERE id = $1',
-      [id]
-    );
-    if (tarefaAtual.rows.length === 0) {
-      await client.query('ROLLBACK');
+    const atualResult = db.exec(`SELECT * FROM tarefas WHERE id = ${idNum}`);
+    if (atualResult.length === 0 || atualResult[0].values.length === 0) {
       return res.status(404).json({ error: 'Tarefa não encontrada' });
     }
 
-    const ordemAtual = tarefaAtual.rows[0].ordem_apresentacao;
-    let tarefaTroca;
+    const tarefaAtual = queryToObjects(atualResult)[0];
+    const ordemAtual = tarefaAtual.ordem_apresentacao;
 
+    let trocaQuery;
     if (direcao === 'subir') {
-      // Buscar tarefa anterior (ordem menor mais próxima)
-      tarefaTroca = await client.query(
-        'SELECT * FROM tarefas WHERE ordem_apresentacao < $1 ORDER BY ordem_apresentacao DESC LIMIT 1',
-        [ordemAtual]
-      );
+      trocaQuery = `SELECT * FROM tarefas WHERE ordem_apresentacao < ${ordemAtual} ORDER BY ordem_apresentacao DESC LIMIT 1`;
     } else if (direcao === 'descer') {
-      // Buscar próxima tarefa (ordem maior mais próxima)
-      tarefaTroca = await client.query(
-        'SELECT * FROM tarefas WHERE ordem_apresentacao > $1 ORDER BY ordem_apresentacao ASC LIMIT 1',
-        [ordemAtual]
-      );
+      trocaQuery = `SELECT * FROM tarefas WHERE ordem_apresentacao > ${ordemAtual} ORDER BY ordem_apresentacao ASC LIMIT 1`;
     } else {
-      await client.query('ROLLBACK');
-      return res.status(400).json({ error: 'Direção inválida. Use "subir" ou "descer"' });
+      return res.status(400).json({ error: 'Direção inválida' });
     }
 
-    if (tarefaTroca.rows.length === 0) {
-      await client.query('ROLLBACK');
+    const trocaResult = db.exec(trocaQuery);
+    if (trocaResult.length === 0 || trocaResult[0].values.length === 0) {
       return res.status(400).json({ 
-        error: direcao === 'subir' 
-          ? 'Esta tarefa já está na primeira posição' 
-          : 'Esta tarefa já está na última posição' 
+        error: direcao === 'subir' ? 'Já está na primeira posição' : 'Já está na última posição' 
       });
     }
 
-    const ordemTroca = tarefaTroca.rows[0].ordem_apresentacao;
-    const idTroca = tarefaTroca.rows[0].id;
+    const tarefaTroca = queryToObjects(trocaResult)[0];
+    const ordemTroca = tarefaTroca.ordem_apresentacao;
+    const idTroca = tarefaTroca.id;
 
-    // Usar valor temporário para evitar conflito de UNIQUE
-    await client.query(
-      'UPDATE tarefas SET ordem_apresentacao = -1 WHERE id = $1',
-      [id]
-    );
-    await client.query(
-      'UPDATE tarefas SET ordem_apresentacao = $1 WHERE id = $2',
-      [ordemAtual, idTroca]
-    );
-    await client.query(
-      'UPDATE tarefas SET ordem_apresentacao = $1 WHERE id = $2',
-      [ordemTroca, id]
-    );
-
-    await client.query('COMMIT');
+    // Trocar ordens
+    db.run(`UPDATE tarefas SET ordem_apresentacao = -1 WHERE id = ${idNum}`);
+    db.run(`UPDATE tarefas SET ordem_apresentacao = ${ordemAtual} WHERE id = ${idTroca}`);
+    db.run(`UPDATE tarefas SET ordem_apresentacao = ${ordemTroca} WHERE id = ${idNum}`);
+    saveDatabase();
 
     res.json({ message: 'Ordem atualizada com sucesso' });
   } catch (err) {
-    await client.query('ROLLBACK');
-    console.error('Erro ao reordenar tarefa:', err);
+    console.error('Erro ao reordenar:', err);
     res.status(500).json({ error: 'Erro ao reordenar tarefa' });
-  } finally {
-    client.release();
   }
 });
 
-// Reordenar via drag-and-drop (atualizar posição)
-app.put('/api/tarefas/reordenar/drag', async (req, res) => {
-  const client = await pool.connect();
+// Reordenar drag-and-drop
+app.put('/api/tarefas/reordenar/drag', (req, res) => {
   try {
-    const { ordens } = req.body; // Array de { id, ordem_apresentacao }
+    const db = getDb();
+    const { ordens } = req.body;
 
-    await client.query('BEGIN');
-
-    // Primeiro, define todas as ordens como negativas para evitar conflitos
+    // Primeiro para negativo
     for (let i = 0; i < ordens.length; i++) {
-      await client.query(
-        'UPDATE tarefas SET ordem_apresentacao = $1 WHERE id = $2',
-        [-(i + 1), ordens[i].id]
-      );
+      db.run(`UPDATE tarefas SET ordem_apresentacao = ${-(i + 1)} WHERE id = ${ordens[i].id}`);
     }
-
-    // Depois, atualiza para as ordens finais
+    // Depois para final
     for (let i = 0; i < ordens.length; i++) {
-      await client.query(
-        'UPDATE tarefas SET ordem_apresentacao = $1 WHERE id = $2',
-        [i + 1, ordens[i].id]
-      );
+      db.run(`UPDATE tarefas SET ordem_apresentacao = ${i + 1} WHERE id = ${ordens[i].id}`);
     }
-
-    await client.query('COMMIT');
+    saveDatabase();
 
     res.json({ message: 'Ordem atualizada com sucesso' });
   } catch (err) {
-    await client.query('ROLLBACK');
-    console.error('Erro ao reordenar tarefas:', err);
+    console.error('Erro ao reordenar:', err);
     res.status(500).json({ error: 'Erro ao reordenar tarefas' });
-  } finally {
-    client.release();
   }
 });
 
-// Rota principal - servir o frontend
+// Rota principal
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// Iniciar servidor
-app.listen(PORT, () => {
-  console.log(`Servidor rodando na porta ${PORT}`);
-  console.log(`Acesse: http://localhost:${PORT}`);
+// Iniciar servidor após banco estar pronto
+initDatabase().then(() => {
+  app.listen(PORT, () => {
+    console.log(`Servidor rodando na porta ${PORT}`);
+    console.log(`Acesse: http://localhost:${PORT}`);
+  });
+}).catch(err => {
+  console.error('Erro ao inicializar banco:', err);
+  process.exit(1);
 });
