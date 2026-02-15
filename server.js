@@ -16,6 +16,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 // Helper para converter resultado sql.js para array de objetos
 const queryToObjects = (result) => {
   if (!result || result.length === 0) return [];
+  if (!result[0].values || result[0].values.length === 0) return [];
   const columns = result[0].columns;
   const values = result[0].values;
   return values.map(row => {
@@ -23,6 +24,11 @@ const queryToObjects = (result) => {
     columns.forEach((col, i) => obj[col] = row[i]);
     return obj;
   });
+};
+
+// Helper para verificar se query retornou resultados
+const hasResults = (result) => {
+  return result && result.length > 0 && result[0].values && result[0].values.length > 0;
 };
 
 // ROTAS DA API
@@ -78,7 +84,7 @@ app.post('/api/tarefas', (req, res) => {
 
     // Verificar se nome já existe
     const existente = db.exec(`SELECT id FROM tarefas WHERE LOWER(nome) = LOWER('${nomeLimpo}')`);
-    if (existente && existente.length > 0 && existente[0].values && existente[0].values.length > 0) {
+    if (hasResults(existente)) {
       return res.status(400).json({ error: 'Já existe uma tarefa com este nome' });
     }
 
@@ -90,8 +96,8 @@ app.post('/api/tarefas', (req, res) => {
     db.run(`INSERT INTO tarefas (nome, custo, data_limite, ordem_apresentacao) VALUES ('${nomeLimpo}', ${custo}, '${data_limite}', ${proximaOrdem})`);
     saveDatabase();
 
-    // Buscar tarefa inserida
-    const novaResult = db.exec('SELECT * FROM tarefas WHERE id = last_insert_rowid()');
+    // Buscar tarefa inserida pelo nome (mais confiável que last_insert_rowid no sql.js)
+    const novaResult = db.exec(`SELECT * FROM tarefas WHERE LOWER(nome) = LOWER('${nomeLimpo}')`);
     const novaTarefa = queryToObjects(novaResult)[0];
 
     res.status(201).json(novaTarefa);
@@ -124,13 +130,13 @@ app.put('/api/tarefas/:id', (req, res) => {
 
     // Verificar se existe
     const existeResult = db.exec(`SELECT * FROM tarefas WHERE id = ${idNum}`);
-    if (existeResult.length === 0 || existeResult[0].values.length === 0) {
+    if (!hasResults(existeResult)) {
       return res.status(404).json({ error: 'Tarefa não encontrada' });
     }
 
     // Verificar nome duplicado
     const duplicado = db.exec(`SELECT id FROM tarefas WHERE LOWER(nome) = LOWER('${nomeLimpo}') AND id != ${idNum}`);
-    if (duplicado && duplicado.length > 0 && duplicado[0].values && duplicado[0].values.length > 0) {
+    if (hasResults(duplicado)) {
       return res.status(400).json({ error: 'Já existe outra tarefa com este nome' });
     }
 
@@ -154,7 +160,7 @@ app.delete('/api/tarefas/:id', (req, res) => {
     const idNum = parseInt(id);
 
     const existeResult = db.exec(`SELECT * FROM tarefas WHERE id = ${idNum}`);
-    if (existeResult.length === 0 || existeResult[0].values.length === 0) {
+    if (!hasResults(existeResult)) {
       return res.status(404).json({ error: 'Tarefa não encontrada' });
     }
 
@@ -178,7 +184,7 @@ app.put('/api/tarefas/:id/reordenar', (req, res) => {
     const idNum = parseInt(id);
 
     const atualResult = db.exec(`SELECT * FROM tarefas WHERE id = ${idNum}`);
-    if (atualResult.length === 0 || atualResult[0].values.length === 0) {
+    if (!hasResults(atualResult)) {
       return res.status(404).json({ error: 'Tarefa não encontrada' });
     }
 
@@ -195,7 +201,7 @@ app.put('/api/tarefas/:id/reordenar', (req, res) => {
     }
 
     const trocaResult = db.exec(trocaQuery);
-    if (trocaResult.length === 0 || trocaResult[0].values.length === 0) {
+    if (!hasResults(trocaResult)) {
       return res.status(400).json({ 
         error: direcao === 'subir' ? 'Já está na primeira posição' : 'Já está na última posição' 
       });
