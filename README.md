@@ -1,10 +1,20 @@
 # Sistema Lista de Tarefas
 
-Sistema web para cadastro e gerenciamento de tarefas.
+![Node.js](https://img.shields.io/badge/Node.js-%3E%3D18-339933?logo=node.js&logoColor=white)
+![Express](https://img.shields.io/badge/Express-4-000000?logo=express&logoColor=white)
+![SQLite](https://img.shields.io/badge/SQLite-sql.js-003B57?logo=sqlite&logoColor=white)
+![License](https://img.shields.io/badge/license-MIT-green)
+![Deploy](https://img.shields.io/badge/deploy-Fly.io-8B5CF6?logo=flydotio&logoColor=white)
+
+Sistema web para cadastro e gerenciamento de tarefas, com API REST em Node.js/Express e persistência em SQLite. Suporta reordenação por drag-and-drop, validações de negócio (nome único, custo não-negativo, data válida) e deploy containerizado.
 
 ## 🌐 Acesso Online
 
 **Aplicação em produção:** https://sistema-tarefas-app.fly.dev/
+
+## Screenshot
+
+![Tela principal do Sistema Lista de Tarefas](docs/screenshot.png)
 
 ## Funcionalidades
 
@@ -20,9 +30,27 @@ Sistema web para cadastro e gerenciamento de tarefas.
 ## Tecnologias
 
 - **Backend**: Node.js + Express
-- **Banco de Dados**: SQLite (sql.js)
-- **Frontend**: HTML, CSS e JavaScript puro
+- **Banco de Dados**: SQLite (sql.js), persistido em arquivo local
+- **Frontend**: HTML, CSS e JavaScript puro (sem framework)
+- **Containerização**: Docker
 - **Hospedagem**: Fly.io
+
+## Arquitetura
+
+Aplicação monolítica simples, sem framework de frontend:
+
+```
+├── server.js         # Servidor Express + rotas da API REST
+├── database.js       # Camada de acesso ao banco (sql.js) e persistência em disco
+├── public/            # Frontend estático servido pelo Express
+│   ├── index.html      # Estrutura da página (tabela de tarefas + modais)
+│   ├── script.js        # Consome a API via fetch, renderiza a tabela, drag-and-drop
+│   └── styles.css
+├── Dockerfile         # Build da imagem para deploy em container
+└── fly.toml           # Configuração de deploy no Fly.io (volume persistente para o banco)
+```
+
+O frontend não usa nenhuma biblioteca: `script.js` faz as chamadas HTTP para `/api/tarefas` e atualiza o DOM diretamente. O banco SQLite roda em memória via `sql.js` e é salvo em disco (`.data/tarefas.db`) a cada escrita — no Fly.io esse diretório é montado como volume persistente (ver `fly.toml`) para sobreviver a reinicializações do container.
 
 ## Instalação Local
 
@@ -37,20 +65,33 @@ cd sistema-lista-tarefas
 npm install
 ```
 
-3. Execute o servidor:
+3. (Opcional) Copie o arquivo de variáveis de ambiente:
+```bash
+cp .env.example .env
+```
+
+4. Execute o servidor:
 ```bash
 npm start
 ```
 
-4. Acesse: http://localhost:3000
+5. Acesse: http://localhost:3000
+
+### Rodando com Docker
+
+```bash
+docker build -t sistema-lista-tarefas .
+docker run -p 3000:3000 sistema-lista-tarefas
+```
 
 ## Variáveis de Ambiente
 
-O sistema usa SQLite e não requer configuração de banco de dados externo. Opcionalmente, você pode configurar:
+O sistema usa SQLite embutido (sql.js) e não requer nenhum banco de dados externo. Todas as variáveis abaixo são opcionais:
 
 | Variável | Descrição | Padrão |
 |----------|-----------|--------|
 | PORT | Porta do servidor | 3000 |
+| NODE_ENV | Ambiente de execução (`development` ou `production`) | development |
 
 ## Estrutura do Banco de Dados
 
@@ -84,4 +125,4 @@ O sistema usa SQLite e não requer configuração de banco de dados externo. Opc
 
 ## Licença
 
-MIT
+Este projeto está sob a licença MIT — veja o arquivo [LICENSE](LICENSE) para detalhes.
